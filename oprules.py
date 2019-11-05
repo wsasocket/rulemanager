@@ -158,15 +158,18 @@ class ChangePriority(OperationFactory):
         super().__init__(data_file)
 
     def op(self, _line):
-        pattern = r'classtype\s*:\s*([a-z\-]+);'
-        if _line.startswith('#'):
+        if 'priority' in _line:
+            self.log('{} has priority key word'.format(_line))
             return _line
-        r = re.search(pattern, _line)
 
+        pattern = r'classtype\s*:\s*([a-z\-]+);'
+        # if _line.startswith('#'):
+        #     return _line
+        r = re.search(pattern, _line)
         if r:
             if r[1] in self.data.keys():
                 # replace and set priority value
-                pass
+                _line = re.sub(pattern, '{}priority:{};'.format(r[0], self.data[r[1]]), _line)
             else:
                 self.log('classtype: {} can not be found'.format(r[1]), 3)
         else:
