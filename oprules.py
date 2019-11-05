@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import sys
+from types import GeneratorType
 
 RULES_DIR = r'D:\work\data\original'
 TARGET_DIR = r'D:\work\data\qianxin'
@@ -28,6 +29,9 @@ class OperationFactory(object):
 
     def op(self, _line):
         return _line
+
+    def patch(self, file):
+        return None
 
     def log(self, _msg, _level=1):
         # define info 1,warn 2,error,3
@@ -72,10 +76,27 @@ class PatchRules(OperationFactory):
         super().__init__(data_file)
 
     def _load_data_file(self, file):
-        pass
+        self.data = dict()
+        pattern = r'(.*?).rules:(.*)'
+        with open(file) as fp:
+            for line in fp:
+                r = re.match(pattern, line)
+                if r:
+                    path = '{}.rules'.format(r.group(1).strip(' '))
+                    filename = os.path.basename(path)
+                    # abspath = os.path.abspath(path)
+                    # print(filename)
+                    # print(abspath)
+                    rule = r.group(2).strip(' ')
+                    if filename in self.data.keys():
+                        self.data[filename].append(rule)
+                    else:
+                        self.data[filename] = [rule]
 
-    def op(self, _line):
-        return _line
+    def patch(self, file):
+        if file in self.data.keys():
+            for r in self.data[file]:
+                yield '{}\n'.format(r)
 
 
 class EnableRules(OperationFactory):
@@ -94,11 +115,14 @@ class EnableRules(OperationFactory):
             sid = r[0]
         if sid and int(sid) in self.data['enable']:
             self.log("{} in enable".format(sid), 1)
-            if _line.startswith('#'): # disable status
+            if _line.startswith('#'):
+                # disable status
                 self.log('[+] {}'.format(sid), 1)
                 # disable -> enable
                 _line = _line[1:]
                 _line = _line.strip(' ')
+            else:
+                self.log('[=] {}'.format(sid), 1)
 
         if sid and int(sid) in self.data['disable']:
             self.log("{} in disable".format(sid), 1)
@@ -106,6 +130,8 @@ class EnableRules(OperationFactory):
                 self.log('[-] {}'.format(sid), 1)
                 # enable -> disable
                 _line = '# {}'.format(_line)
+            else:
+                self.log('[=] {}'.format(sid), 1)
 
         return '{}\n'.format(_line)
 
@@ -166,9 +192,15 @@ def process_rules(path, op_instance):
     for f in files:
         tmp_file = open(os.path.join(RULES_DIR, 'tmp.rules'), 'w')
         with open(os.path.join(RULES_DIR, path, f), 'r') as fp:
-            print(f)
+            # print(f)
             for line in fp:
+                if len(line) < 6:
+                    continue
                 tmp_file.write(op_instance.op(line))
+        # print(type(op_instance.patch))
+        if isinstance(op_instance.patch(f), GeneratorType):
+            for line in op_instance.patch(f):
+                tmp_file.write(line)
         tmp_file.close()
         shutil.move(os.path.join(RULES_DIR, 'tmp.rules'), os.path.join(TARGET_DIR, path, f))
 
@@ -179,10 +211,8 @@ if __name__ == '__main__':
     registered_op_name = [n.__name__.lower() for n in registered_op]
     operator = None
     datafile = None
-    # sidfile = None
-    # classfile = None
     op_index = -1
-    # parameter = {'file': str(), 'classification': dict(), 'sid': {'enable': list(), 'disable': list()}}
+
     try:
         opts, args = getopt.getopt(sys.argv[1:], "o:p:s:c:h",
                                    ["operate=", "patchfile=", "sidfile=", 'classfile=', 'help'])
