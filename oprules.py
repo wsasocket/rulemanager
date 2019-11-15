@@ -73,7 +73,9 @@ class PatchRules(OperationFactory):
             patch file indicate file:rules"""
 
     def __init__(self, data_file):
+        self.sids = list()
         super().__init__(data_file)
+
 
     def _load_data_file(self, file):
         self.data = dict()
@@ -88,6 +90,9 @@ class PatchRules(OperationFactory):
                     # print(filename)
                     # print(abspath)
                     rule = r.group(2).strip(' ')
+                    s = re.findall(r'sid:(\d+);', rule)
+                    if len(s) == 1:
+                        self.sids.append(s[0])
                     if filename in self.data.keys():
                         self.data[filename].append(rule)
                     else:
@@ -97,6 +102,21 @@ class PatchRules(OperationFactory):
         if file in self.data.keys():
             for r in self.data[file]:
                 yield '{}\n'.format(r)
+
+    def op(self, _line):
+        # 如果patch文件中增加或者修改的规则sid已经存在，应当把这些规则先注释停用
+        s = re.findall(r'sid:(\d+);', _line)
+        sid = None
+        if len(s) == 1:
+            if s[0] in self.sids:
+                sid = s[0]
+
+        if sid:
+            if not _line.startswith('#'):
+                # print('[#] {}'.format(sid))
+                return '# {}'.format(_line)
+        return _line
+
 
 
 class EnableRules(OperationFactory):
