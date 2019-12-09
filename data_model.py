@@ -1,7 +1,19 @@
-'''所有数据结构的模型'''
-
+"""定义个个类型文件所需要的数据结构和基本属性及方法"""
 import re
-import os
+
+
+class DataFromFile(object):
+
+    def __init__(self, filename):
+        self.filename = filename
+
+    def load(self):
+        # open file and load data structs
+        pass
+
+    def get_record_size(self):
+        # return record size
+        pass
 
 
 class Rule(object):
@@ -11,11 +23,12 @@ class Rule(object):
         self._rev = 0
         self._ref_cve = str()
         self._ref_url = str()
+        self._ref_bid = str()
+        self._ref_nessus = str()
         self._classify = str()
         self._msg = str()
         self._enable = True
-        if not self.parse_line(line):
-            raise ValueError("Line data parse error:\n {}".format(line))
+        self.parse_line(line)
 
     def parse_line(self, rule_string):
         sid_pattern = r'sid\s*:\s*([\d]{1,10})\s*;'
@@ -24,11 +37,13 @@ class Rule(object):
         class_pattern = r'classtype\s*:(.*?)\s*;'
         ref_cve_pattern = r'reference\s*:cve,([\d]{4}-[\d]{3,7})\s*;'
         ref_url_pattern = r'reference\s*:url,(.*?)\s*;'
+        ref_bid_pattern = r'reference\s*:bugtraq,([\d]{2,7})\s*;'
+        ref_nessus_pattern = r'reference\s*:nessus,([\d]{2,7})\s*;'
         r = re.search(sid_pattern, rule_string)
         if r:
-            self._sid = int(r.group(1))
+            self._sid = r.group(1)
         else:
-            print('Can not get rules\'s sid:\n{}'.format(rule_string))
+            # print('Can not get rules\'s sid:\n{}'.format(rule_string))
             raise ValueError("Line data parse can not get sid :\n ")
 
         if rule_string.startswith('#'):
@@ -48,7 +63,7 @@ class Rule(object):
 
         r = re.search(rev_pattern, rule_string)
         if r:
-            self._rev = int(r.group(1))
+            self._rev = r.group(1)
 
         r = re.search(ref_cve_pattern, rule_string)
         if r:
@@ -58,6 +73,13 @@ class Rule(object):
         if r:
             self._ref_url = 'https://{}'.format(r.group(1))
 
+        r = re.search(ref_bid_pattern, rule_string)
+        if r:
+            self._ref_bid = r.group(1)
+
+        r = re.search(ref_nessus_pattern, rule_string)
+        if r:
+            self._ref_nessus = r.group(1)
         return True
 
     @property
@@ -66,11 +88,11 @@ class Rule(object):
 
     @property
     def revision(self):
-        return self._rev
+        return int(self._rev)
 
     @property
     def sid(self):
-        return self._sid
+        return int(self._sid)
 
     @property
     def enable(self):
@@ -92,14 +114,98 @@ class Rule(object):
     def classify(self):
         return self._classify
 
+    @property
+    def bid(self):
+        return self._ref_bid
 
-class Classification(object):
+    @property
+    def nessus(self):
+        return self._ref_nessus
+
+
+class RuleSet(DataFromFile):
+    '''ips 规则文件的基本定义、属性、方法'''
+
     def __init__(self, filename):
+        super(RuleSet, self).__init__(filename)
+        self._rule = list()
+        self._load()
+
+    def _load(self):
+        with open(self.filename, 'r', encoding='utf-8') as fp:
+            for line in fp:
+                # if line.startswith("#") or len(line)<3:
+                #     continue
+                try:
+                    r = Rule(line.strip('\n '))
+                except ValueError:
+                    continue
+                else:
+                    self._rule.append(r)
+
+    def get_record_size(self):
+        return len(self._rule)
+
+    # def get_rules(self):
+    #     if len(self._rule) == 0:
+    #         return None
+    #     for i in self._rule:
+    #         yield i
+
+    def __iter__(self):
+        if len(self._rule) == 0:
+            return None
+        for i in self._rule:
+            yield i
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            for i in self._rule:
+                if key == i.sid:
+                    return i
+        raise KeyError('Only index with integer as sid ')
+
+
+# class ClassificationName(object):
+#     def __init__(self, line):
+#         self._name = str()
+#         self._describe = str()
+#         self._priority = 0
+#         if not self.parse_line(line):
+#             raise ValueError("Line data parse error:\n {}".format(line))
+#
+#     def parse_line(self, line):
+#         pattern = r'config classification:\s*(.*?),(.*?),([\d]{1,2})'
+#         r = re.search(pattern, line)
+#         if r:
+#             self._name = r.group(1)
+#             self._describe = r.group(2)
+#             self._priority = int(r.group(3))
+#             return True
+#         return False
+#
+#     @property
+#     def name(self):
+#         return self._name
+#
+#     @property
+#     def describe(self):
+#         return self._describe
+#
+#     @property
+#     def priority(self):
+#         return self._priority
+
+
+class ClassificationSet(DataFromFile):
+
+    def __init__(self, filename):
+        super(ClassificationSet, self).__init__(filename)
         self._classification = list()
-        self._filename = filename
 
     def load(self):
-        with open(self._filename, 'r') as fp:
+
+        with open(self.filename, 'r') as fp:
             for line in fp:
                 line = line.strip('\n ')
                 if line.startswith("#"):
@@ -111,111 +217,85 @@ class Classification(object):
                         self._classification.append({'priority': int(r.group(3)), 'name': r.group(2),
                                                      'describe': r.group(1)})
 
-    @property
-    def all_names(self):
-        return [x['name'] for x in self._classification]
+    def get_record_size(self):
+        return len(self._classification)
 
-    def __iter__(self):
+    def get_classification(self):
         if len(self._classification) == 0:
             return None
         for i in self._classification:
             yield i
 
-    def __len__(self):
-        return len(self._classification)
 
-    def __getitem__(self, item):
-        for i in self._classification:
-            if i['name'] == item:
-                return i
+# class TagName(object):
+#     def __init__(self, line):
+#         self._name = str()
+#         self._describe = str()
+#         self._id = 0
+#         if not self.parse_line(line):
+#             raise ValueError("Line data parse error:\n {}".format(line))
+#
+#     def parse_line(self, line):
+#         part = line.split(':')
+#         if len(part) == 3:
+#             self._id = int(part[0])
+#             self._name = part[1]
+#             self._describe = part[2]
+#             return True
+#         return False
+#
+#     @property
+#     def name(self):
+#         return self._name
+#
+#     @property
+#     def describe(self):
+#         return self._describe
+#
+#     @property
+#     def id(self):
+#         return self._id
 
 
-class Document(object):
-    DOC_CREATE = 0
-    DOC_MODIFY = 1
-    DOC_LOAD = 2
-    DOC_SAVE = 3
+class TagSet(DataFromFile):
 
-    def __init__(self, sid):
-        self._sid = sid
-        self._info_dict = {'Summary': '', 'Impact': '', 'Detailed Information': '',
-                           'Attack Scenarios': '', 'Ease of Attack': '', 'False Positives': 'N/A',
-                           'False Negatives': 'N/A', 'Corrective Action': '', 'Contributors': '',
-                           'Additional References': '', 'Affected Systems': ''}
-        self._info_dict_EN = {'EN Summary': '', 'EN Impact': '', 'EN Detailed Information': '',
-                              'EN Attack Scenarios': '', 'EN Ease of Attack': '', 'EN False Positives': 'N/A',
-                              'EN False Negatives': 'N/A', 'EN Corrective Action': '', 'EN Contributors': '',
-                              'EN Additional References': '', 'EN Affected Systems': ''}
-        self._status = -1
-        self._doc_root = None
+    def __init__(self, filename):
+        super(TagSet, self).__init__(filename)
+        self._tags = list()
+        self._tag_id = list()
 
-    def load_doc(self, root):
-        self._doc_root = root
-        filename = os.path.join(root, '{:d}.txt'.format(self._sid))
-        longline = str()
-        with open(filename, 'r', encoding='gb2312') as fp:
+    def load(self):
+
+        with open(self.filename, 'r') as fp:
             for line in fp:
-                longline += line.strip('\n ')
-        longline = longline[:-2]
-        part = longline.split('--')
-        for k in self._info_dict.keys():
-            for i in part:
-                if i.startswith(k):
-                    self._info_dict[k] = i[len(k) + 1:]
-        for k in self._info_dict_EN.keys():
-            for i in part:
-                if i.startswith(k):
-                    self._info_dict_EN[k] = i[len(k) + 1:]
+                line = line.strip('\n ')
+                if line.startswith("#"):
+                    continue
+                else:
+                    part = line.split(':')
+                    if len(part) == 3:
+                        self._tags.append({'id': int(part[0]), 'name': part[1], 'describe': part[2]})
+                        self._tag_id.append(int(part[0]))
 
-        self._status = Document.DOC_LOAD
-
-    def new_doc(self, root):
-        self._doc_root = root
-        self._status = Document.DOC_CREATE
-
-    def modify_doc(self, key, value):
-        if key == 'CN':
-            self._info_dict = value
-        if key == 'EN':
-            self._info_dict_EN = value
-        self._status = Document.DOC_MODIFY
-
-    def save(self):
-        filename = os.path.join(self._doc_root, '{:d}.txt'.format(self._sid))
-        with open(filename, 'w') as fp :
-            line = 'Rule:\n\n--\nSid:\n{}\n--\n'.format(self._sid)
-            fp.write(line)
-            for k in self._info_dict.keys():
-                line = '{}\n{}\n--\n'.format(k, self._info_dict[k])
-                fp.write(line)
-            for k in self._info_dict_EN.keys():
-                line = '{}\n{}\n--\n'.format(k, self._info_dict_EN[k])
-                fp.write(line)
-        self._status = Document.DOC_SAVE
-
-    def __str__(self):
-        line = 'Rule:\n\n--\nSid:\n{}\n--\n'.format(self._sid)
-        for k in self._info_dict.keys():
-            line += '{}\n{}\n--\n'.format(k, self._info_dict[k])
-        for k in self._info_dict_EN.keys():
-            line += '{}\n{}\n--\n'.format(k, self._info_dict_EN[k])
-        return line
+    def get_record_size(self):
+        return len(self._tags)
 
     @property
-    def doc_CN(self):
-        return self._info_dict
+    def tag_id(self):
+        return self._tag_id
 
-    @property
-    def doc_EN(self):
-        return self._info_dict_EN
+    def __getitem__(self, key):
+        if len(self._tags) == 0:
+            return None
 
-    @property
-    def sid(self):
-        return self._sid
-
-    @property
-    def status(self):
-        return self._status
+        if isinstance(key, int):
+            for i in self._tags:
+                if i.id == key:
+                    return i['id'], i['name'], i['describe']
+        # if isinstance(key, str):
+        #     for i in self._tags:
+        #         if i.name == key:
+        #             return i['id'], i['name'], i['describe']
 
 
 class Version(object):
@@ -244,8 +324,8 @@ class Version(object):
                 self._describe = v
 
     def __str__(self):
-        self._content = 'Version:\n{}\n--\nTotal number of signatures:\n{:d}\n--\nBuild Date:\n{}\n--\nDescription:' \
-                        '\n{}\n--'.format(self._version, self._rule_count, self._build_date, self._describe)
+        self._content = 'Version:\n{}\n--\nTotal number of signatures:\n{:d}\n--\nBuild Date:\n{}\n--\nDescription:\n{}\n--'.format(
+            self._version, self._rule_count, self._build_date, self._describe)
         return self._content
 
     def dumpfile(self):
@@ -258,7 +338,7 @@ class Version(object):
 
     @property
     def ver(self):
-        return  self._version
+        return self._version
 
     @property
     def describe(self):
@@ -284,45 +364,29 @@ class Version(object):
     def count(self, count):
         self._rule_count = count
 
-
-# class TagConfig(object):
-#
+# class TagMap(object):
 #     def __init__(self, filename):
-#         self._filename = filename
-#         self._tags = list()
-#
-#     def load(self):
-#         with open(self._filename, 'r') as fp:
+#         self._content = dict()
+#         with open(filename, 'r') as fp:
 #             for line in fp:
-#                 line = line.strip('\n ')
-#                 if line.startswith("#"):
-#                     continue
-#                 else:
-#                     part = line.split(':')
-#                     if len(part) == 3:
-#                         self._tags.append({'id': int(part[0]), 'name': part[1], 'describe': part[2]})
+#                 line = line.strip("\n ")
+#                 k, v = line.split(':')
+#                 self._content[int(k)] = [int(x) for x in v.split(',')]
 #
-#     def get_record_size(self):
-#         return len(self._tags)
+#     def __getitem__(self, sid):
+#         # 返回当前sid的tag列表
+#         if isinstance(sid, int):
+#             if sid in self._content.keys():
+#                 return self._content[sid]
+#             else:
+#                 raise KeyError("Tag for Sid:{:d} NOT found".format(sid))
+#         else:
+#             raise KeyError("Sid should be integer")
 #
-#     @property
-#     def all_names(self):
-#         return [x['name'] for x in self._tags]
-#
-#     def __getitem__(self, key):
-#         if len(self._tags) == 0:
-#             return None
-#
-#         if isinstance(key, int):
-#             for i in self._tags:
-#                 if i['id'] == key:
-#                     return i
-#
-#     def __iter__(self):
-#         if len(self._tags) == 0:
-#             return None
-#         for i in self._tags:
-#             yield i
-#
-#     def __len__(self):
-#         return len(self._tags)
+#     def tag_exist(self, sid):
+#         if not isinstance(sid, int):
+#             raise KeyError("Sid should be integer")
+#         if sid in self._content.keys():
+#             return True
+#         else:
+#             return False

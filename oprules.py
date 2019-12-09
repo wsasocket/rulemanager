@@ -118,7 +118,6 @@ class PatchRules(OperationFactory):
         return _line
 
 
-
 class EnableRules(OperationFactory):
     """ oprules.py -o EnableRules -s sidfile -e enable/disable\n oprules.py --operate=EnableRules --sidfile=sidfile
     --enable=enable/disable enable or disable rules sid file and enable flag should be present """
