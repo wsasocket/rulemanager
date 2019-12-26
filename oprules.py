@@ -159,7 +159,6 @@ class EnableRules(OperationFactory):
         self.data = {'enable': list(), 'disable': list()}
         with open(file) as fp:
             for _line in fp:
-
                 r = re.match(pattern, _line)
                 if r:
                     print(r.group(0))
@@ -167,6 +166,7 @@ class EnableRules(OperationFactory):
                         self.data['enable'].append(int(r[2]))
                     if r.group(1) == '#':
                         self.data['disable'].append(int(r[2]))
+
 
 
 class ChangePriority(OperationFactory):
@@ -177,8 +177,8 @@ class ChangePriority(OperationFactory):
         super().__init__(data_file)
 
     def op(self, _line):
-        if 'priority' in _line:
-            self.log('{} has priority key word'.format(_line))
+        if 'priority:' in _line:
+            # self.log('[!] {} has priority key word'.format(_line))
             return _line
 
         pattern = r'classtype\s*:\s*([a-z\-]+);'
@@ -188,17 +188,17 @@ class ChangePriority(OperationFactory):
         if r:
             if r[1] in self.data.keys():
                 # replace and set priority value
-                _line = re.sub(pattern, '{}priority:{};'.format(r[0], self.data[r[1]]), _line)
+                _line = re.sub(pattern, '{} priority:{};'.format(r[0], self.data[r[1]]), _line)
             else:
-                self.log('classtype: {} can not be found'.format(r[1]), 3)
+                self.log('[x] classtype: {} can not be found'.format(r[1]), 3)
         else:
-            self.log('classtype can not be found:{}'.format(_line), 3)
+            self.log('[x] classtype can not be found:{}'.format(_line), 3)
 
         return _line
 
     def _load_data_file(self, file):
         """ Demo: config classification: successful-admin,Successful Administrator Privilege Gain,1"""
-        pattern = r'config classification:(.*?),(.*?),(\d+)'
+        pattern = r'config classification: ([a-z\-]+),([a-zA-Z\-\s]+),(\d+)'
         self.data = dict()
         with open(file) as fp:
             for _line in fp:
@@ -207,6 +207,8 @@ class ChangePriority(OperationFactory):
                 r = re.match(pattern, _line)
                 if r:
                     self.data[r.group(1).strip(' ')] = int(r.group(3))
+                # else:
+                #     print('Error:{}'.format(_line))
 
 
 def process_rules(path, op_instance):
@@ -216,7 +218,7 @@ def process_rules(path, op_instance):
         with open(os.path.join(RULES_DIR, path, f), 'r') as fp:
             # print(f)
             for line in fp:
-                if len(line) < 6:
+                if len(line) < 6 or line.startswith('#'):
                     continue
                 tmp_file.write(op_instance.op(line))
         # print(type(op_instance.patch))
