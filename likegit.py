@@ -20,26 +20,29 @@ def get_rules_list(path):
 
 
 def isRules(line):
-    P1 = r'sid:(\d+);'
-    #     P2 = r'rev:\d+;';
-    P3 = r'^alert'
-    P4 = r'^#\s*alert'
-    en = None
-    r = re.search(P3, line)
-    if not r:
-        en = False
-    r = re.search(P4, line)
-    if not r:
-        en = True
-    if en is None:
-        # 没有发现alert，说明不是规则
-        return en, None
-    r = re.findall(P1, line)
-    if len(r) == 1:
-        # 有alert sid，基本可以认定是规则
-        return en, r[0]
-    else:
-        return None, None
+    """返回值是 _en，_sid，_rev。假设一个规则中必须存在alert，msg，sid，rev这四个参数
+    参数不够不足以构成规则，根据是alert还是‘#’开头代表规则的使能状态"""
+    pattern1 = r'sid:(\d+);'
+    pattern2 = r'rev:(\d+);'
+    pattern3 = r'^(#)*\s*alert'
+
+    _en = None
+    _sid = None
+    _rev = None
+
+    m = re.match(pattern3, line)
+    if m:
+        _en = True if m.group(1) is None else False
+
+    r = re.search(pattern1, line)
+    if r:
+        _sid = r.group(1)
+
+    r = re.search(pattern2, line)
+    if r:
+        _rev = r.group(1)
+    return _en, _sid, _rev
+
 
 
 if __name__ == '__main__':
@@ -52,33 +55,53 @@ if __name__ == '__main__':
         # 获取相同文件中的 sid：isEnable对
         with open(new_file) as fp:
             for line in fp:
-                en, sid = isRules(line)
+                en, sid, rev = isRules(line)
                 if sid and en:
-                    NEW_DICT[sid] = en
+                    NEW_DICT[sid] = (en, rev)
         with open(old_file) as fp:
             for line in fp:
-                en, sid = isRules(line)
+                en, sid, rev = isRules(line)
                 if sid and en:
-                    OLD_DICT[sid] = en
+                    OLD_DICT[sid] = (en, rev)
         print("**File: {}**".format(f))
         new_sids = list()
+        update_sids = list()
+        disable_sids = list()
+        # 判断逻辑
         for k in NEW_DICT.keys():
-            if k in OLD_DICT.keys() and OLD_DICT[k] == NEW_DICT[k]:
-                # 相同无变化
-                pass
-            if k not in OLD_DICT.keys() and NEW_DICT[k]:
+            if k in OLD_DICT.keys():
+                if OLD_DICT[k] == NEW_DICT[k]:
+                    # 相同无变化
+                    pass
+                else:
+                    # 可能存在 en 或者 rev 的变化
+                    if OLD_DICT[k][0] and not NEW_DICT[k][0]:
+                        # 使能变化,新的规则库中，规则被禁止
+                        print('- DISABLE RULES: #{}'.format(k))
+                        disable_sids.append(k)
+                    if not OLD_DICT[k][0] and NEW_DICT[k][0]:
+                        # 重新被启用
+                        pass
+                    if int(OLD_DICT[k][1]) != int(NEW_DICT[k][1]):
+                        # 版本升级
+                        update_sids.append(k)
+
+            if k not in OLD_DICT.keys() and NEW_DICT[k][0]:
                 # 发现新的在用规则
                 print('- NEW RULES: {}'.format(k))
                 new_sids.append(k)
-            if k in OLD_DICT.keys() and not NEW_DICT[k]:
-                # 旧的规则被禁止
-                print('- DISABLE RULES: {}'.format(k))
-            if k in OLD_DICT.keys() and NEW_DICT[k] and not OLD_DICT[k]:
-                # 旧规则被重新启用（虽然可能性不大）
-                print('- REENABLE RULES: {}'.format(k))
         # 打印出新增加的在用规则
         with open(new_file) as fp:
+            print('-----add new------')
             for line in fp:
-                en, sid = isRules(line)
+                en, sid, rev = isRules(line)
                 if sid in new_sids:
                     print('```\n{}```'.format(line))
+            print('-----update------')
+            for line in fp:
+                en, sid, rev = isRules(line)
+                if sid in update_sids:
+                    print('```\n{}```'.format(line))
+
+
+
