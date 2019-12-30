@@ -1,12 +1,13 @@
 # cmp tow version rules
 # get new delete and modify files
 # cmp current version rules ,give suggest
+import getopt
 import os
 import re
+import sys
 
 NEW_VERSION_RULES = r'C:\Snort\rules2'
 OLD_VERSION_RULES = r'C:\Snort\rules'
-CURRENT_RULES = r'C:\Snort\rules3'
 NEW_DICT = dict()
 OLD_DICT = dict()
 CURRENT_DICT = dict()
@@ -44,8 +45,37 @@ def isRules(line):
     return _en, _sid, _rev
 
 
-
 if __name__ == '__main__':
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "o:n:hf",
+                                   ["old_version=", "new_version=", 'help', 'force'])
+        # ':' means need parameter or means toggle
+        if len(opts) == 0:
+            opts = [('-h', '')]
+        for opt, arg in opts:
+            if opt in ('-h', '--help'):
+                print('Common Usage:\n{} --old_version=path_to_old_version --new_version=path_to_new_version'.format(
+                    sys.argv[0]))
+                print('Use default configure:\n{} -f  \n\told_version:{}\n\tnew_version:{}'.format(sys.argv[0],
+                                                                                              OLD_VERSION_RULES,
+                                                                                              NEW_VERSION_RULES))
+                sys.exit()
+            if opt in ('-o', '--old_version'):
+                parameter = arg.lower()
+                if os.path.isdir(parameter):
+                    OLD_VERSION_RULES = parameter
+                else:
+                    raise getopt.GetoptError('old version path is invalidate')
+            if opt in ('-n', '--new_version'):
+                parameter = arg.lower()
+                if os.path.isdir(parameter):
+                    NEW_VERSION_RULES = parameter
+                else:
+                    raise getopt.GetoptError('new version path is invalidate')
+    except getopt.GetoptError as e:
+        print(e)
+        sys.exit()
+
     for f in get_rules_list(NEW_VERSION_RULES):
         # f仅仅是文件名，不带有目录信息
         new_file = os.path.join(NEW_VERSION_RULES, f)
@@ -102,6 +132,3 @@ if __name__ == '__main__':
                 en, sid, rev = isRules(line)
                 if sid in update_sids:
                     print('```\n{}```'.format(line))
-
-
-

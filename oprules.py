@@ -76,7 +76,6 @@ class PatchRules(OperationFactory):
         self.sids = list()
         super().__init__(data_file)
 
-
     def _load_data_file(self, file):
         self.data = dict()
         pattern = r'(.*?).rules:(.*)'
@@ -166,7 +165,6 @@ class EnableRules(OperationFactory):
                         self.data['enable'].append(int(r[2]))
                     if r.group(1) == '#':
                         self.data['disable'].append(int(r[2]))
-
 
 
 class ChangePriority(OperationFactory):
