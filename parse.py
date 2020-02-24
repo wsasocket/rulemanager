@@ -3,7 +3,7 @@ import re
 from functools import reduce
 from csv import reader as csvReader
 IDSFILE = r'c:\snort\log\alert.ids'
-CSVFILE = r'C:\Users\Administrator\Documents\level.4.23.1.csv'
+CSVFILE = r'C:\Users\Administrator\Documents\level.4.23.5.76533.csv'
 
 
 def parseBlock(file):
