@@ -28,6 +28,7 @@ class OperationFactory(object):
         pass
 
     def op(self, _line):
+        """仅仅处理已经存在一行数据"""
         return _line
 
     def patch(self, file):
@@ -98,6 +99,9 @@ class PatchRules(OperationFactory):
                         self.data[filename] = [rule]
 
     def patch(self, file):
+        """如果存在增加新规则的情况，需要额外的对每一条新增加的规则进行处理
+        其他仅仅是对规则本身进行处理，不涉及规则的增加
+        """
         if file in self.data.keys():
             for r in self.data[file]:
                 yield '{}\n'.format(r)
@@ -167,6 +171,60 @@ class EnableRules(OperationFactory):
                         self.data['disable'].append(int(r[2]))
 
 
+class ChangePopularity(OperationFactory):
+    """ oprules.py -o ChangePopularity -f popfile\n oprules.py --operate=ChangePriority --popfile=popfile
+            according to popfile to change the popularity of rules."""
+
+    def __init__(self, data_file):
+        super().__init__(data_file)
+
+    def op(self, _line):
+        sid = None
+        pattern = r'sid\s*:\s*(\d+);'
+        r = re.search(pattern, _line)
+        if r:
+            sid = r.group(1)
+            if sid not in self.data.keys():
+                return _line
+        else:
+            raise (KeyError('Not find Sid'))
+
+        pattern = r'reference\s*:\s*pop,(\d);'
+        r = re.search(pattern, _line)
+        if r:
+            # find pop content
+            # modify old value and return
+            _line = re.sub(pattern, 'reference:pop,{};'.format(
+                self.data[sid]), _line, count=1)
+            self.log(f'[O] {sid} change popularity as {self.data[sid]}')
+            self.log(f'New:{_line}')
+            return _line
+
+        pattern = r'reference:(.*?);'
+        r = re.search(pattern, _line)
+        if r:
+            # insert new pop content before first 'reference' and return
+            _line = re.sub(pattern, '{} reference:pop,{};'.format(
+                r[0], self.data[sid]), _line, count=1)
+            self.log(f'[O] {sid} add popularity as {self.data[sid]}')
+            self.log(f'New:{_line}')
+        else:
+            self.log('[x] Reference can not be found:{}'.format(_line), 3)
+        return _line
+
+    def _load_data_file(self, file):
+        """ Demo: 10086:1 """
+        pattern = r'(\d+):([1-3]{1})'
+        self.data = dict()
+        with open(file) as fp:
+            for _line in fp:
+                if _line.startswith('#'):
+                    continue
+                r = re.match(pattern, _line)
+                if r:
+                    self.data[r.group(1).strip(' ')] = int(r.group(2))
+
+
 class ChangePriority(OperationFactory):
     """ oprules.py -o ChangePriority -c classfile\n oprules.py --operate=ChangePriority --classfile=classfile
             according to classification change the priority of rules,classification should be present"""
@@ -186,7 +244,8 @@ class ChangePriority(OperationFactory):
         if r:
             if r[1] in self.data.keys():
                 # replace and set priority value
-                _line = re.sub(pattern, '{} priority:{};'.format(r[0], self.data[r[1]]), _line)
+                _line = re.sub(pattern, '{} priority:{};'.format(
+                    r[0], self.data[r[1]]), _line)
             else:
                 self.log('[x] classtype: {} can not be found'.format(r[1]), 3)
         else:
@@ -224,20 +283,22 @@ def process_rules(path, op_instance):
             for line in op_instance.patch(f):
                 tmp_file.write(line)
         tmp_file.close()
-        shutil.move(os.path.join(RULES_DIR, 'tmp.rules'), os.path.join(TARGET_DIR, path, f))
+        shutil.move(os.path.join(RULES_DIR, 'tmp.rules'),
+                    os.path.join(TARGET_DIR, path, f))
 
 
 if __name__ == '__main__':
 
-    registered_op = [ChangePriority, EnableRules, PatchRules, RemoveUseless]
+    registered_op = [ChangePriority, EnableRules,
+                     PatchRules, RemoveUseless, ChangePopularity]
     registered_op_name = [n.__name__.lower() for n in registered_op]
     operator = None
     datafile = None
     op_index = -1
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "o:p:s:c:h",
-                                   ["operate=", "patchfile=", "sidfile=", 'classfile=', 'help'])
+        opts, args = getopt.getopt(sys.argv[1:], "o:p:s:c:f:h",
+                                   ["operate=", "patchfile=", "sidfile=", 'classfile=', 'popfile=', 'help'])
         # ':' means need parameter or means toggle
         if len(opts) == 0:
             opts = [('-h', '')]
@@ -249,30 +310,48 @@ if __name__ == '__main__':
             if opt in ('-o', '--operate'):
                 operator = arg.lower()
                 if operator not in registered_op_name:
-                    raise getopt.GetoptError('operate should in {}'.format(registered_op_name))
+                    raise getopt.GetoptError(
+                        'operate should in {}'.format(registered_op_name))
             if opt in ('-p', '--patchfile'):
                 datafile = arg
                 if not os.path.isfile(datafile):
-                    raise getopt.GetoptError('patchfile "{}" should a file'.format(datafile))
+                    raise getopt.GetoptError(
+                        'patchfile "{}" should a file'.format(datafile))
 
             if opt in ('-s', '--sidfile'):
                 datafile = arg
                 if not os.path.isfile(datafile):
-                    raise getopt.GetoptError('sidfile "{}" should a file'.format(datafile))
+                    raise getopt.GetoptError(
+                        'sidfile "{}" should a file'.format(datafile))
+
             if opt in ('-c', '--classfile'):
                 datafile = arg
                 if not os.path.isfile(datafile):
-                    raise getopt.GetoptError('classfile "{}" should a file'.format(datafile))
+                    raise getopt.GetoptError(
+                        'classfile "{}" should a file'.format(datafile))
+
+            if opt in ('-f', '--popfile'):
+                datafile = arg
+                if not os.path.isfile(datafile):
+                    raise getopt.GetoptError(
+                        'classfile "{}" should a file'.format(datafile))
 
         op_index = registered_op_name.index(operator)
         if operator == 'patchrules' and datafile is None:
-            raise getopt.GetoptError('Operation patchrule need --patchfile or -p parameter')
+            raise getopt.GetoptError(
+                'Operation patchrule need --patchfile or -p parameter')
 
         if operator == 'enablerules' and datafile is None:
-            raise getopt.GetoptError('Operation enablerules need --sidfile or -p parameter')
+            raise getopt.GetoptError(
+                'Operation enablerules need --sidfile or -s parameter')
 
         if operator == 'changepriority' and datafile is None:
-            raise getopt.GetoptError('Operation changepriority need --classfile or -c parameter')
+            raise getopt.GetoptError(
+                'Operation changepriority need --classfile or -c parameter')
+
+        if operator == 'changepopularity' and datafile is None:
+            raise getopt.GetoptError(
+                'Operation changepopularity need --popfile or -f parameter')
 
     except getopt.GetoptError as e:
         print(e)
