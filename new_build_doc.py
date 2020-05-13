@@ -46,7 +46,7 @@ class NewDocument(Document):
                 self._info_dict[k] = cnnvd[v] if v in cnnvd.keys(
                 ) else nvd[v]
 
-    def build_default(self, type: str, / , *, ref=None):
+    def build_default(self, type: str, /, *, ref=None):
         if ref:
             self._info_dict_EN['EN Additional References'] = self._info_dict["Additional References"] = '\n'.join(
                 ref)
@@ -93,7 +93,11 @@ class NVDDatabase(AbsDatabase):
         with open(self.dbfile, 'r', encoding='utf8') as fp:
             for line in fp:
                 tmp = dict()
-                tmp = json.loads(line)
+                try:
+                    tmp = json.loads(line)
+                except json.decoder.JSONDecodeError as e:
+                    print(f'Json load error:{line}')
+                    continue
                 self.db.append(tmp.copy())
 
     def query(self, cve):
@@ -112,6 +116,7 @@ class CVEDatabase(AbsDatabase):
     def init_db(self):
         self.connection = sqlite3.connect(self.dbfile)
         self.cursor = self.connection.cursor()
+        self.queryLog = open('missing.log', 'w')
 
     def query(self, cve):
         colmun = ('cve', 'cnnvd', 'detail', 'level', 'vuln_type', 'threaten_type', 'manufacturer',
@@ -119,13 +124,19 @@ class CVEDatabase(AbsDatabase):
         SQL = r'SELECT * FROM info WHERE cve=:1'
         res = self.cursor.execute(SQL, [cve])
         if res:
-            return dict(zip(colmun, res.fetchone()))
+            try:
+                return dict(zip(colmun, res.fetchone()))
+            except TypeError as e:
+                print(f'{cve=} search result:{res.fetchone()}')
+                self.queryLog.write(cve+'\n')
+                return None
         else:
             return None
 
     def close(self):
         self.cursor.close()
         self.connection.close()
+        self.queryLog.close()
 
 
 def select_cve_for_sid(rule):
@@ -181,23 +192,27 @@ if __name__ == "__main__":
     cnnvd_db.init_db()
     nvd_db = NVDDatabase(r'd:\work\data\nvd.txt')
     nvd_db.init_db()
-
-    sid, pop, cves, rule_type, refs = select_cve_for_sid(demo4)
-    # 有CVE的情况
-    if sid and cves:
-        for cve in cves:
-            res1 = cnnvd_db.query(cve)
-            if res1 is not None:
-                break
-        if res1 is None:
-            print(f'[X] sid:{sid} can not get Correct Detail')
-        else:
-            doc = NewDocument(sid, pop=pop if pop is not None else 0)
-            doc.rebuild(res1, res2)
-            doc.save()
-    elif sid and not cves:
-        # if rule_type in ['botnet', 'malware', 'brute']:
-        doc = NewDocument(sid, pop=pop if pop is not None else 0)
-        doc.build_default(rule_type, ref=refs)
-        doc.save()
+    with open('1.0.2.210.add') as fp:
+        for line in fp:
+            if len(line) < 5:
+                continue
+            sid, pop, cves, rule_type, refs = select_cve_for_sid(line)
+            # 有CVE的情况
+            if sid and cves:
+                for cve in cves:
+                    res1 = cnnvd_db.query(cve)
+                    if res1 is not None:
+                        break
+                if res1 is None:
+                    print(f'[X] sid:{sid} {cve} can not get Correct Detail')
+                else:
+                    doc = NewDocument(sid, pop=pop if pop is not None else 0)
+                    doc.rebuild(res1, res2)
+                    doc.save()
+            elif sid and not cves:
+                # if rule_type in ['botnet', 'malware', 'brute']:
+                print(f'SID:{sid} Use Default Document Template')
+                doc = NewDocument(sid, pop=pop if pop is not None else 0)
+                doc.build_default(rule_type, ref=refs)
+                doc.save()
     cnnvd_db.close()
